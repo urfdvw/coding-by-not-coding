@@ -2,7 +2,6 @@ const fileTree = document.getElementById("file-tree");
 
 document.getElementById("open-directory").addEventListener("click", async () => {
     const dirHandle = await window.showDirectoryPicker();
-    const fileTree = document.getElementById("file-tree");
     fileTree.innerHTML = "";
     await createTreeView(dirHandle, fileTree);
 });
@@ -10,87 +9,68 @@ document.getElementById("open-directory").addEventListener("click", async () => 
 async function createTreeView(itemHandle, parent) {
     const listItem = document.createElement("li");
     listItem.dataset.type = itemHandle.kind;
-    listItem.handle = itemHandle; // Store the handle on the list item
-    listItem.parentHandle = parent.parentHandle || null; // Store the parent handle
+    listItem.handle = itemHandle;
+    listItem.parentHandle = parent.parentHandle || null;
 
-    if (itemHandle.kind === "file") {
-        listItem.classList.add("file");
+    if (itemHandle.kind === "directory") {
         listItem.textContent = itemHandle.name;
-        parent.appendChild(listItem);
+        listItem.className = "folder";
+        listItem.addEventListener("click", async (event) => {
+            event.stopPropagation();
+            if (!listItem.querySelector("ul")) {
+                const ul = document.createElement("ul");
+                ul.parentHandle = itemHandle;
+                listItem.appendChild(ul);
+                for await (const entry of itemHandle.values()) {
+                    await createTreeView(entry, ul);
+                }
+            } else {
+                listItem.querySelector("ul").remove();
+            }
+        });
     } else {
-        listItem.classList.add("folder");
         listItem.textContent = itemHandle.name;
-        parent.appendChild(listItem);
-
-        const childList = document.createElement("ul");
-        childList.style.display = "none";
-        listItem.appendChild(childList);
-
-        for await (const entry of itemHandle.values()) {
-            await createTreeView(entry, childList);
-        }
+        listItem.className = "file";
     }
+
+    parent.appendChild(listItem);
 }
 
-const contextMenu = document.getElementById("context-menu");
-
-fileTree.addEventListener("click", (event) => {
+fileTree.addEventListener("click", async (event) => {
     const target = event.target;
-
-    if (target.classList.contains("folder")) {
-        const childList = target.querySelector("ul");
-        if (childList) {
-            childList.style.display = childList.style.display === "none" ? "block" : "none";
-        }
+    if (target.dataset.type === "file") {
+        const file = await target.handle.getFile();
+        const content = await file.text();
+        console.log(content);
     }
 });
 
-function showContextMenu(event) {
+const contextMenu = document.getElementById("context-menu");
+fileTree.addEventListener("contextmenu", (event) => {
     event.preventDefault();
-    contextMenu.style.display = "block";
-    contextMenu.style.left = `${event.clientX}px`;
-    contextMenu.style.top = `${event.clientY}px`;
+    const target = event.target;
+    contextMenu.target = target;
 
-    contextMenu.target = event.target;
-}
+    document.getElementById("rename").style.display = target.dataset.type === "directory" ? "none" : "block";
+    document.getElementById("delete").style.display = target.dataset.type === "directory" ? "none" : "block";
+    document.getElementById("new-file").style.display = target.dataset.type === "directory" ? "block" : "none";
+    document.getElementById("new-folder").style.display = target.dataset.type === "directory" ? "block" : "none";
+
+    contextMenu.style.left = event.pageX + "px";
+    contextMenu.style.top = event.pageY + "px";
+    contextMenu.style.display = "block";
+});
+
+document.addEventListener("click", (event) => {
+    if (!event.target.closest("#context-menu")) {
+        hideContextMenu();
+    }
+});
 
 function hideContextMenu() {
     contextMenu.style.display = "none";
 }
 
-fileTree.addEventListener("contextmenu", showContextMenu);
-
-document.addEventListener("click", (event) => {
-    if (event.target.closest("#context-menu") === null) {
-        hideContextMenu();
-    }
-});
-
-// Utility function to copy a directory recursively
-async function copyDirectory(srcHandle, destHandle) {
-    for await (const entry of srcHandle.values()) {
-        if (entry.kind === 'directory') {
-            const newDestHandle = await destHandle.getDirectoryHandle(entry.name, { create: true });
-            await copyDirectory(entry, newDestHandle);
-        } else {
-            const file = await entry.getFile();
-            const writableStream = await destHandle.getFileHandle(entry.name, { create: true }).then(fh => fh.createWritable());
-            await file.stream().pipeTo(writableStream);
-        }
-    }
-}
-
-// Utility function to remove a directory recursively
-async function removeDirectory(dirHandle) {
-    for await (const entry of dirHandle.values()) {
-        if (entry.kind === 'directory') {
-            await removeDirectory(entry);
-        }
-        await dirHandle.removeEntry(entry.name);
-    }
-}
-
-// Utility function to get the parent directory handle of a given entry
 async function getParentHandle(listItem) {
     return listItem.parentHandle;
 }
@@ -102,7 +82,20 @@ document.getElementById("rename").addEventListener("click", async () => {
             const target = contextMenu.target;
             const parentHandle = await getParentHandle(target);
 
-            // ... rest of the rename event listener ...
+            if (target.dataset.type === "file") {
+                const file = await target.handle.getFile();
+                const originalContent = await file.text();
+
+                await target.handle.remove();
+
+                const newFileHandle = await parentHandle.getFileHandle(newName, { create: true });
+                const writableStream = await newFileHandle.createWritable();
+                await writableStream.write(originalContent);
+                await writableStream.close();
+
+                target.handle = newFileHandle;
+                target.textContent = newName;
+            }
 
         } catch (error) {
             console.error("Error renaming:", error);
@@ -117,7 +110,7 @@ document.getElementById("delete").addEventListener("click", async () => {
             const target = contextMenu.target;
             const parentHandle = await getParentHandle(target);
 
-            if (target.dataset.type === 'directory') {
+            if (target.dataset.type === "directory") {
                 await target.handle.removeRecursively(); // Use removeRecursively for directories
             } else {
                 await target.handle.remove(); // Use remove for files
@@ -131,36 +124,13 @@ document.getElementById("delete").addEventListener("click", async () => {
     hideContextMenu();
 });
 
-
-// Log the content of a file item when clicked
-fileTree.addEventListener("click", async (event) => {
-    const target = event.target;
-    if (target.dataset.type === "file") {
-        const file = await target.handle.getFile();
-        const content = await file.text();
-        console.log(content);
-    }
-});
-
 document.getElementById("new-file").addEventListener("click", async () => {
-    const fileName = prompt("Enter new file name:");
+    const fileName = prompt("Enter file name:");
     if (fileName) {
         try {
             const target = contextMenu.target;
-            const parentHandle = target.dataset.type === 'directory' ? target.handle : await getParentHandle(target.handle);
-            const newFileHandle = await parentHandle.getFileHandle(fileName, { create: true });
-
-            const listItem = document.createElement("li");
-            listItem.dataset.type = "file";
-            listItem.handle = newFileHandle;
-            listItem.classList.add("file");
-            listItem.textContent = fileName;
-
-            if (target.dataset.type === 'directory') {
-                target.querySelector("ul").appendChild(listItem);
-            } else {
-                target.insertAdjacentElement("afterend", listItem);
-            }
+            const newFileHandle = await target.handle.getFileHandle(fileName, { create: true });
+            await createTreeView(newFileHandle, target.querySelector("ul"));
         } catch (error) {
             console.error("Error creating new file:", error);
         }
@@ -169,31 +139,16 @@ document.getElementById("new-file").addEventListener("click", async () => {
 });
 
 document.getElementById("new-folder").addEventListener("click", async () => {
-    const folderName = prompt("Enter new folder name:");
+    const folderName = prompt("Enter folder name:");
     if (folderName) {
         try {
             const target = contextMenu.target;
-            const parentHandle = target.dataset.type === 'directory' ? target.handle : await getParentHandle(target.handle);
-            const newFolderHandle = await parentHandle.getDirectoryHandle(folderName, { create: true });
-
-            const listItem = document.createElement("li");
-            listItem.dataset.type = "directory";
-            listItem.handle = newFolderHandle;
-            listItem.classList.add("folder");
-            listItem.textContent = folderName;
-
-            const childList = document.createElement("ul");
-            childList.style.display = "none";
-            listItem.appendChild(childList);
-
-            if (target.dataset.type === 'directory') {
-                target.querySelector("ul").appendChild(listItem);
-            } else {
-                target.insertAdjacentElement("afterend", listItem);
-            }
+            const newFolderHandle = await target.handle.getDirectoryHandle(folderName, { create: true });
+            await createTreeView(newFolderHandle, target.querySelector("ul"));
         } catch (error) {
             console.error("Error creating new folder:", error);
         }
     }
     hideContextMenu();
 });
+
