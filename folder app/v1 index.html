@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Explorer</title>
+    <style>
+        .directory {
+            padding-left: 15px;
+        }
+        .context-menu {
+            position: absolute;
+            background-color: white;
+            border: 1px solid black;
+            display: none;
+        }
+        .context-menu ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+        .context-menu li {
+            cursor: pointer;
+            padding: 5px;
+        }
+        .context-menu li:hover {
+            background-color: lightgray;
+        }
+    </style>
+</head>
+<body>
+    <button id="openDirectory">Open Directory</button>
+    <div id="fileTree"></div>
+    <div id="contextMenu" class="context-menu">
+        <ul>
+            <li id="rename">Rename</li>
+            <li id="delete">Delete</li>
+            <li id="newFile">New File</li>
+            <li id="newFolder">New Folder</li>
+        </ul>
+    </div>
+
+    <script>
+        const openDirectory = document.getElementById("openDirectory");
+        const fileTree = document.getElementById("fileTree");
+        const contextMenu = document.getElementById("contextMenu");
+        const rename = document.getElementById("rename");
+        const deleteItem = document.getElementById("delete");
+        const newFile = document.getElementById("newFile");
+        const newFolder = document.getElementById("newFolder");
+
+        openDirectory.addEventListener("click", async () => {
+            const dirHandle = await window.showDirectoryPicker();
+            const items = await readDirectory(dirHandle);
+            const tree = buildFileTree(items);
+            fileTree.innerHTML = "";
+            fileTree.appendChild(tree);
+        });
+
+        async function readDirectory(dirHandle) {
+            const items = [];
+            for await (const entry of dirHandle.values()) {
+                if (entry.kind === "directory") {
+                    const childItems = await readDirectory(entry);
+                    items.push({ name: entry.name, type: "directory", items: childItems });
+                } else if (entry.kind === "file") {
+                    items.push({ name: entry.name, type: "file" });
+                }
+            }
+            return items;
+        }
+
+        function buildFileTree(items) {
+            const ul = document.createElement("ul");
+            ul.className = "directory";
+            for (const item of items) {
+                const li = document.createElement("li");
+                li.textContent = item.name;
+                li.dataset.type = item.type;
+                li.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    if (item.type === "directory") {
+                        const childUl = li.querySelector("ul");
+                        childUl.style.display = childUl.style.display === "none" ? "block" : "none";
+                    }
+                });
+                li.addEventListener("contextmenu", (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    contextMenu.style.display = "block";
+                    contextMenu.style.left = `${e.pageX}px`;
+                    contextMenu.style.top = `${e.pageY}px`;
+                    // Implement the context menu actions here
+                });
+                if (item.type === "directory") {
+                    const childTree = buildFileTree(item.items);
+                    childTree.style.display = "none";
+                    li.appendChild(childTree);
+                }
+                ul.appendChild(li);
+            }
+            return ul;
+        }
+
+        document.addEventListener("click", () => {
+            contextMenu.style.display = "none";
+        });
+
+        // Implement the context menu actions here
+        rename.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const targetElement = getTargetElement(contextMenu);
+            const newName = prompt("Enter the new name:", targetElement.textContent);
+            if (newName) {
+                targetElement.textContent = newName;
+            }
+        });
+
+        deleteItem.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const targetElement = getTargetElement(contextMenu);
+            if (confirm(`Are you sure you want to delete "${targetElement.textContent}"?`)) {
+                targetElement.remove();
+            }
+        });
+
+        newFile.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const targetElement = getTargetElement(contextMenu);
+            if (targetElement.dataset.type === "directory") {
+                const fileName = prompt("Enter the new file name:");
+                if (fileName) {
+                    const newFileElement = document.createElement("li");
+                    newFileElement.textContent = fileName;
+                    newFileElement.dataset.type = "file";
+                    targetElement.querySelector("ul").appendChild(newFileElement);
+                }
+            }
+        });
+
+        newFolder.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const targetElement = getTargetElement(contextMenu);
+            if (targetElement.dataset.type === "directory") {
+                const folderName = prompt("Enter the new folder name:");
+                if (folderName) {
+                    const newFolderElement = document.createElement("li");
+                    newFolderElement.textContent = folderName;
+                    newFolderElement.dataset.type = "directory";
+                    const childTree = document.createElement("ul");
+                    childTree.className = "directory";
+                    childTree.style.display = "none";
+                    newFolderElement.appendChild(childTree);
+                    targetElement.querySelector("ul").appendChild(newFolderElement);
+                }
+            }
+        });
+
+        function getTargetElement(contextMenu) {
+            const x = parseInt(contextMenu.style.left, 10);
+            const y = parseInt(contextMenu.style.top, 10);
+            return document.elementFromPoint(x, y);
+        }
+    </script>
+</body>
+</html>
+
