@@ -12,10 +12,13 @@ async function createTreeView(itemHandle, parent) {
     listItem.handle = itemHandle;
     listItem.parentHandle = parent.parentHandle || null;
 
+    const itemText = document.createElement("span");
+    itemText.textContent = itemHandle.name;
+    listItem.appendChild(itemText);
+
     if (itemHandle.kind === "directory") {
-        listItem.textContent = itemHandle.name;
         listItem.className = "folder";
-        listItem.addEventListener("click", async (event) => {
+        itemText.addEventListener("click", async (event) => {
             event.stopPropagation();
             if (!listItem.querySelector("ul")) {
                 const ul = document.createElement("ul");
@@ -29,7 +32,6 @@ async function createTreeView(itemHandle, parent) {
             }
         });
     } else {
-        listItem.textContent = itemHandle.name;
         listItem.className = "file";
     }
 
