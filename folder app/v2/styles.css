@@ -33,10 +33,12 @@ button {
 }
 
 .folder {
+    color: blue;
     font-weight: bold;
 }
 
 .file {
+    color: black;
     font-style: italic;
 }
 

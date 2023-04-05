@@ -39,29 +39,34 @@ async function createTreeView(itemHandle, parent) {
 }
 
 fileTree.addEventListener("click", async (event) => {
-    const target = event.target;
-    if (target.dataset.type === "file") {
+    const target = event.target.closest("li");
+    if (target && target.dataset.type === "file") {
+        event.stopPropagation();
         const file = await target.handle.getFile();
         const content = await file.text();
         console.log(content);
     }
 });
 
+
 const contextMenu = document.getElementById("context-menu");
 fileTree.addEventListener("contextmenu", (event) => {
     event.preventDefault();
-    const target = event.target;
-    contextMenu.target = target;
+    const target = event.target.closest("li");
+    if (target) {
+        contextMenu.target = target;
 
-    document.getElementById("rename").style.display = target.dataset.type === "directory" ? "none" : "block";
-    document.getElementById("delete").style.display = target.dataset.type === "directory" ? "none" : "block";
-    document.getElementById("new-file").style.display = target.dataset.type === "directory" ? "block" : "none";
-    document.getElementById("new-folder").style.display = target.dataset.type === "directory" ? "block" : "none";
+        document.getElementById("rename").style.display = target.dataset.type === "directory" ? "none" : "block";
+        document.getElementById("delete").style.display = target.dataset.type === "directory" ? "none" : "block";
+        document.getElementById("new-file").style.display = target.dataset.type === "directory" ? "block" : "none";
+        document.getElementById("new-folder").style.display = target.dataset.type === "directory" ? "block" : "none";
 
-    contextMenu.style.left = event.pageX + "px";
-    contextMenu.style.top = event.pageY + "px";
-    contextMenu.style.display = "block";
+        contextMenu.style.left = event.pageX + "px";
+        contextMenu.style.top = event.pageY + "px";
+        contextMenu.style.display = "block";
+    }
 });
+
 
 document.addEventListener("click", (event) => {
     if (!event.target.closest("#context-menu")) {
