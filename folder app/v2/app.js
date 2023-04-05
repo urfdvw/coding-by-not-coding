@@ -11,6 +11,7 @@ async function createTreeView(itemHandle, parent) {
     const listItem = document.createElement("li");
     listItem.dataset.type = itemHandle.kind;
     listItem.handle = itemHandle; // Store the handle on the list item
+    listItem.parentHandle = parent.parentHandle || null; // Store the parent handle
 
     if (itemHandle.kind === "file") {
         listItem.classList.add("file");
@@ -90,10 +91,8 @@ async function removeDirectory(dirHandle) {
 }
 
 // Utility function to get the parent directory handle of a given entry
-async function getParentHandle(entryHandle) {
-    const parentPath = entryHandle.fullPath.split('/').slice(0, -1).join('/');
-    const rootHandle = await navigator.storage.getDirectory();
-    return rootHandle.getDirectoryHandle(parentPath);
+async function getParentHandle(listItem) {
+    return listItem.parentHandle;
 }
 
 document.getElementById("rename").addEventListener("click", async () => {
@@ -101,19 +100,10 @@ document.getElementById("rename").addEventListener("click", async () => {
     if (newName) {
         try {
             const target = contextMenu.target;
-            const parentHandle = await getParentHandle(target.handle);
+            const parentHandle = await getParentHandle(target);
 
-            if (target.dataset.type === 'directory') {
-                const newDirHandle = await parentHandle.getDirectoryHandle(newName, { create: true });
-                await copyDirectory(target.handle, newDirHandle);
-                await removeDirectory(target.handle);
-            } else {                const file = await target.handle.getFile();
-                const writableStream = await parentHandle.getFileHandle(newName, { create: true }).then(fh => fh.createWritable());
-                await file.stream().pipeTo(writableStream);
-                await parentHandle.removeEntry(target.handle.name);
-            }
+            // ... rest of the rename event listener ...
 
-            target.textContent = newName;
         } catch (error) {
             console.error("Error renaming:", error);
         }
@@ -125,12 +115,12 @@ document.getElementById("delete").addEventListener("click", async () => {
     if (confirm("Are you sure you want to delete?")) {
         try {
             const target = contextMenu.target;
-            const parentHandle = await getParentHandle(target.handle);
+            const parentHandle = await getParentHandle(target);
 
             if (target.dataset.type === 'directory') {
-                await removeDirectory(target.handle);
+                await target.handle.removeRecursively(); // Use removeRecursively for directories
             } else {
-                await parentHandle.removeEntry(target.handle.name);
+                await target.handle.remove(); // Use remove for files
             }
 
             target.remove();
@@ -139,6 +129,17 @@ document.getElementById("delete").addEventListener("click", async () => {
         }
     }
     hideContextMenu();
+});
+
+
+// Log the content of a file item when clicked
+fileTree.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (target.dataset.type === "file") {
+        const file = await target.handle.getFile();
+        const content = await file.text();
+        console.log(content);
+    }
 });
 
 document.getElementById("new-file").addEventListener("click", async () => {
